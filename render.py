@@ -6,39 +6,79 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 import glm
 
+def compile_shader(source, shader_type):
+    """Compile shader with error checking."""
+    shader = glCreateShader(shader_type)
+    glShaderSource(shader, source)
+    glCompileShader(shader)
+    
+    # Check compilation status
+    status = glGetShaderiv(shader, GL_COMPILE_STATUS)
+    if status == GL_FALSE:
+        error_log = glGetShaderInfoLog(shader)
+        print(f"Shader compilation failed: {error_log.decode('utf-8')}")
+        return None
+    return shader
+
 def load_obj(file_path):
-    """Load standard OBJ file with vertices and normals."""
+    """Load standard OBJ file with vertices and normals, ensuring triangulation."""
     vertices = []
     normals = []
+    faces = []
 
     try:
         with open(file_path, 'r') as file:
             for line in file:
                 if line.startswith('v '):
-                    # Vertex line
                     vertices.append([float(x) for x in line.split()[1:4]])
                 elif line.startswith('vn '):
-                    # Normal line
                     normal = [float(x) for x in line.split()[1:4]]
                     norm = np.linalg.norm(normal)
                     normals.append(normal / norm if norm != 0 else [0, 0, 0])
                 elif line.startswith('f '):
-                    # Face line (if needed for triangulation)
-                    pass
+                    # Triangulate faces, handling different OBJ formats
+                    parts = [v.split('/') for v in line.split()[1:]]
+                    
+                    # Convert to zero-indexed vertices
+                    face_vertices = [int(v[0])-1 for v in parts]
+                    
+                    # Triangulate polygon into multiple triangles
+                    for i in range(1, len(face_vertices)-1):
+                        faces.extend([
+                            face_vertices[0],
+                            face_vertices[i],
+                            face_vertices[i+1]
+                        ])
 
-        # Convert to numpy arrays for rendering
-        vertices_array = np.array(vertices, dtype=np.float32).flatten()
-        normals_array = np.array(normals, dtype=np.float32).flatten()
-
-        print(f"Total vertices: {len(vertices_array)//3}")
-        print(f"Total normals: {len(normals_array)//3}")
-        print(f"Vertex range: [{vertices_array.min()}, {vertices_array.max()}]")
+        # Reorder vertices and normals based on faces
+        triangulated_vertices = np.array([vertices[i] for i in faces], dtype=np.float32)
         
-        return vertices_array, normals_array
+        # Handle case where no normals are provided
+        if normals:
+            triangulated_normals = np.array([normals[i % len(normals)] for i in faces], dtype=np.float32)
+        else:
+            # Generate basic normals if not provided
+            triangulated_normals = np.zeros_like(triangulated_vertices)
+
+        print(f"Total triangulated vertices: {len(triangulated_vertices)}")
+        print(f"Vertex range: [{triangulated_vertices.min()}, {triangulated_vertices.max()}]")
+        
+        return triangulated_vertices.flatten(), triangulated_normals.flatten(), triangulated_vertices
 
     except Exception as e:
         print(f"Error loading file: {e}")
-        return None, None
+        return None, None, None
+
+def calculate_model_bounds(vertices):
+    """Calculate the bounding box and center of the model."""
+    vertices_array = np.array(vertices)
+    min_bounds = np.min(vertices_array, axis=0)
+    max_bounds = np.max(vertices_array, axis=0)
+    center = (min_bounds + max_bounds) / 2
+    size = max_bounds - min_bounds
+    max_dimension = max(size)
+    
+    return center, max_dimension
 
 def main():
     if not glfw.init():
@@ -62,12 +102,15 @@ def main():
         return
 
     # Load vertices and normals
-    vertices, normals = load_obj(sys.argv[1])
+    vertices, normals, raw_vertices = load_obj(sys.argv[1])
 
     if vertices is None or normals is None:
         print("Failed to load model")
         glfw.terminate()
         return
+
+    # Calculate model bounds
+    model_center, model_size = calculate_model_bounds(raw_vertices)
 
     # Create VAO and VBOs
     vao = glGenVertexArrays(1)
@@ -90,10 +133,28 @@ def main():
     with open('fragment_shader.glsl', 'r') as f:
         fragment_shader_source = f.read()
 
-    # Compile shaders
-    vertex_shader = shaders.compileShader(vertex_shader_source, GL_VERTEX_SHADER)
-    fragment_shader = shaders.compileShader(fragment_shader_source, GL_FRAGMENT_SHADER)
-    shader_program = shaders.compileProgram(vertex_shader, fragment_shader)
+    # Compile shaders with error checking
+    vertex_shader = compile_shader(vertex_shader_source, GL_VERTEX_SHADER)
+    fragment_shader = compile_shader(fragment_shader_source, GL_FRAGMENT_SHADER)
+    
+    if not vertex_shader or not fragment_shader:
+        print("Shader compilation failed")
+        glfw.terminate()
+        return
+
+    shader_program = glCreateProgram()
+    glAttachShader(shader_program, vertex_shader)
+    glAttachShader(shader_program, fragment_shader)
+    glLinkProgram(shader_program)
+
+    # Check program linking status
+    link_status = glGetProgramiv(shader_program, GL_LINK_STATUS)
+    if link_status == GL_FALSE:
+        error_log = glGetProgramInfoLog(shader_program)
+        print(f"Shader program linking failed: {error_log.decode('utf-8')}")
+        glfw.terminate()
+        return
+
     glUseProgram(shader_program)
 
     # Position attribute
@@ -108,14 +169,21 @@ def main():
     glEnableVertexAttribArray(normal_loc)
     glVertexAttribPointer(normal_loc, 3, GL_FLOAT, GL_FALSE, 0, None)
 
-    # Matrices with adjusted camera
-    model = glm.rotate(glm.mat4(1.0), glm.radians(45.0), glm.vec3(1.0, 1.0, 0.0))
+    # Dynamically adjust camera based on model size
+    camera_distance = model_size * 2  # Adjust distance based on model size
     view = glm.lookAt(
-        glm.vec3(0.0, 0.0, 5.0),  # Move camera back
-        glm.vec3(0.0, 0.0, 0.0),  
+        glm.vec3(0.0, 0.0, camera_distance),  # Dynamically set camera distance
+        glm.vec3(model_center[0], model_center[1], model_center[2]),  # Look at model center  
         glm.vec3(0.0, 1.0, 0.0)
     )
-    projection = glm.perspective(glm.radians(45.0), 800.0/600.0, 0.1, 10.0)
+
+    # Adjust perspective to ensure full model visibility
+    aspect_ratio = 800.0 / 600.0
+    fov = glm.radians(60.0)  # Increased FOV for wider view
+    projection = glm.perspective(fov, aspect_ratio, 0.1, camera_distance * 2)
+
+    # Rotation matrix to view model from a good angle
+    model = glm.rotate(glm.mat4(1.0), glm.radians(45.0), glm.vec3(1.0, 1.0, 0.0))
 
     # Main loop
     while not glfw.window_should_close(window):
@@ -130,7 +198,7 @@ def main():
 
         # Set uniform values
         glUniform3f(glGetUniformLocation(shader_program, 'lightPos'), 1.0, 1.0, 1.0)
-        glUniform3f(glGetUniformLocation(shader_program, 'viewPos'), 0.0, 0.0, 5.0)
+        glUniform3f(glGetUniformLocation(shader_program, 'viewPos'), 0.0, 0.0, camera_distance)
         glUniform3f(glGetUniformLocation(shader_program, 'lightColor'), 1.0, 1.0, 1.0)
         glUniform3f(glGetUniformLocation(shader_program, 'objectColor'), 0.8, 0.5, 0.2)
 
