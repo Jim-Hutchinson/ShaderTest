@@ -1,7 +1,4 @@
-import pygame as pg
-from OpenGL.GL import *
-from OpenGL.GL.shaders import compileProgram,compileShader
-import numpy as np
+from common import *
 
 import scrnQuad
 import materials
@@ -19,8 +16,9 @@ class Engine:
 
         self.colBuffer = materials.Material(self.width, self.height)
 
-        self.shader = self.buildShader("shaders/frameBufferVertex.glsl", "shaders/frameBufferFragment.glsl")
-        self.rayTracer = self.buildComputeShader("shaders/rayTracer.glsl")
+        # Update the paths to the correct locations of the shader files
+        self.shader = self.buildShader("ray tracer/shaders/frameBufferVert.glsl", "ray tracer/shaders/frameBufferFrag.glsl")
+        self.rayTracer = self.buildComputeShader("ray tracer/shaders/rayTracer.glsl")
 
     def buildShader(self, vertex:str, fragment:str):
         with open(vertex, 'r') as file:

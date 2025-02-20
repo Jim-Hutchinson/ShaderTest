@@ -20,21 +20,22 @@ struct Ray {
 
 // input/output
 layout(local_size_x = 8, local_size_y = 8) in;
-layout(binding = 0) uniform image2D img_output;
+layout(rgba32f, binding = 0) uniform writeonly image2D img_output;
 
 void main() {
 
     ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.xy);
     ivec2 screen_size = imageSize(img_output);
-    float horizontalCoefficient = ((float(pixel_coords.x) * 2 - screen_size.x) / screen_size.x);
-    float verticalCoefficient = ((float(pixel_coords.y) * 2 - screen_size.y) / screen_size.x);
+    float aspectRatio = float(screen_size.x) / float(screen_size.y);
+    float horizontalCoefficient = (float(pixel_coords.x) / screen_size.x) * 2.0 - 1.0;
+    float verticalCoefficient = (float(pixel_coords.y) / screen_size.y) * 2.0 - 1.0;
 
     vec3 pixel = vec3(0.0);
 
     Camera camera;
     camera.position = vec3(0.0);
     camera.forwards = vec3(1.0, 0.0, 0.0);
-    camera.right = vec3(0.0, 1.0, 0.0);
+    camera.right = vec3(0.0, aspectRatio, 0.0);
     camera.up = vec3(0.0, 0.0, 1.0);
 
     Sphere sphere;
@@ -44,7 +45,7 @@ void main() {
 
     Ray ray;
     ray.origin = camera.position;
-    ray.direction = camera.forwards + horizontalCoefficient * camera.right + verticalCoefficient * camera.up;
+    ray.direction = normalize(camera.forwards + horizontalCoefficient * camera.right + verticalCoefficient * camera.up);
 
     float a = dot(ray.direction, ray.direction);
     float b = 2.0 * dot(ray.direction, ray.origin - sphere.center);
@@ -55,5 +56,5 @@ void main() {
         pixel += sphere.color;
     }
 
-    imageStore(img_output, pixel_coords, vec4(pixel,1.0));
+    imageStore(img_output, pixel_coords, vec4(pixel, 1.0));
 }
