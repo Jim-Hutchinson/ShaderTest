@@ -1,5 +1,5 @@
 from common import *
-
+import buffers
 import scrnQuad
 import materials
 
@@ -15,6 +15,9 @@ class Engine:
         self.screen = scrnQuad.ScreenQuad()
 
         self.colBuffer = materials.Material(self.width, self.height)
+
+        self.sphereBuffer = buffers.Buffer(size = 1024, binding = 1, floatCount = 8)
+        self.planeBuffer = buffers.Buffer(size = 1024, binding = 2, floatCount = 20)
 
         # Update the paths to the correct locations of the shader files
         self.shader = self.buildShader("ray tracer/shaders/frameBufferVert.glsl", "ray tracer/shaders/frameBufferFrag.glsl")
