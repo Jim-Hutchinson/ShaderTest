@@ -1,4 +1,4 @@
-from runner import *
+from common import *
 import main
 
 if __name__ == "__main__":

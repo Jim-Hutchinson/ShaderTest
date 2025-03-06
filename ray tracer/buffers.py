@@ -4,16 +4,21 @@ import plane
 
 class Buffer:
     def __init__(self, size: int, binding: int, floatCount: int):
+
         self.size = size
         self.binding = binding
         self.floatCount = floatCount
-        
-        self.hostMem = np.zeros(size * floatCount, dtype=np.float32)
-        self.deviceMem = glGenBuffers(1)
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, self.deviceMem)
-        glBufferData(GL_SHADER_STORAGE_BUFFER, self.hostMem.nbytes, self.hostMem, GL_DYNAMIC_STORAGE_BIT)
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, binding, self.deviceMem)
-        self.elements_written = 0
+
+        # (cx cy cz r) (r g b _)
+        self.hostMemory = np.zeros(floatCount * size, dtype=np.float32)
+
+        self.deviceMemory = glGenBuffers(1)
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, self.deviceMemory)
+        glBufferStorage(
+            GL_SHADER_STORAGE_BUFFER, self.hostMemory.nbytes, 
+            self.hostMemory, GL_DYNAMIC_STORAGE_BIT)
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, binding, self.deviceMemory)
+        self.elements_updated = 0
 
     def planeRecord(self, i: int, _plane: plane.Plane):
 
