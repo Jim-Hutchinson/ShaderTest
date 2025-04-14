@@ -33,13 +33,14 @@
 
 |System|Resolution|Frame Rate|
 |------|----------|----------|
-|Ryzen 7840U Laptop|640x480|140fps|
-|Ryzen 7840U Laptop|920x690|72fps|
-|Ryzen 7840U Laptop|1200x900|51fps|
-|8700 + 3050 6GB|
-|8700
+|Ryzen 7840U Laptop|640x480|140 fps|
+|Ryzen 7840U Laptop|800x600|84 fps|
+|Ryzen 7840U Laptop|1200x900|51 fps|
+|8700 + 3050 6GB|800x600|N fps|
+|8700 + 3050 6GB|1200x900|N fps|
+|8700 + 3050 6GB|1600x1200|N fps|
 |14700K + 7900XTX|1200x900|N fps|
-|14700K + 7900XTX|1560x1170|N fps|
+|14700K + 7900XTX|1600x1200|N fps|
 |14700K + 7900XTX|1920x1440|N fps|
 
   Tests were performed in the default scene by moving the camera along the length of the hallway, spinning 180 degrees, and then moving back and rotating again.
