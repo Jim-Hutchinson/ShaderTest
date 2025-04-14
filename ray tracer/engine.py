@@ -1,115 +1,475 @@
 from common import *
-import buffers
-import scrnQuad
-import materials
-import scene
-import texture
+import textures as textures
 
 class Engine:
+    """
+        Responsible for drawing scenes
+    """
 
-    def __init__(self, width:int, height:int):
-        self.width = width
-        self.height = height
+    def __init__(self, width, height):
+        """
+            Initialize a flat raytracing context
+            
+                Parameters:
+                    width (int): width of screen
+                    height (int): height of screen
+        """
+        self.screenWidth = width
+        self.screenHeight = height
 
-        self.targetFPS = 60
-        self.FPSmargin = 10
+        self.targetFrameRate = 60
+        self.frameRateMargin = 10
 
-        self.buildAssets()
+        #general OpenGL configuration
+        self.shader = self.makeShader("ray tracer/shaders/frameBufferVertex.txt",
+                                        "ray tracer/shaders/frameBufferFragment.txt")
+        
+        self.rayTracerShader = self.makeComputeShader("ray tracer/shaders/rayTracer.txt")
 
-    def buildAssets(self):
-        self.screen = scrnQuad.ScreenQuad()
+        self.shaderGPass = self.makeShader(
+            "ray tracer/shaders/g_vertex.txt",
+            "ray tracer/shaders/g_fragment.txt"
+        )
 
-        self.colBuffer = materials.Material(self.width, self.height)
+        self.set_onetime_shader_data()
 
-        self.makeNoiseTexture()
-        self.makeMegaTexture()
+        self.get_shader_locations()
+        
+        glUseProgram(self.shader)
+        
+        self.makeQuad()
+        self.makeColorBuffers()
+        self.makeResourceMemory()
+        self.makeSuperTexture()
+    
+    def set_onetime_shader_data(self):
 
-        self.sphereBuffer = buffers.Buffer(size = 1024, binding = 1, floatCount = 8)
-        self.planeBuffer = buffers.Buffer(size = 1024, binding = 2, floatCount = 20)
+        glUseProgram(self.shaderGPass)
 
-        # Update the paths to the correct locations of the shader files
-        self.shader = self.buildShader("ray tracer/shaders/frameBufferVert.glsl", "ray tracer/shaders/frameBufferFrag.glsl")
-        self.rayTracer = self.buildComputeShader("ray tracer/shaders/rayTracer.glsl")
+        glUniform1i(
+            glGetUniformLocation(
+                self.shaderGPass, "SuperTexture"
+            ), 0
+        )
+    
+    def get_shader_locations(self):
 
-    def makeNoiseTexture(self):
-        self.noise = np.zeros(self.height * self.width * 4)
+        glUseProgram(self.shaderGPass)
 
-        for i in range (self.width * self.height * 4):
-            radius = np.random.uniform(low = 0.0, high = 0.99)
-            theta = np.random.uniform(low = 0.0, high = 2*np.pi)
-            phi = np.random.uniform(low = 0.0, high = np.pi)
-            deviation = np.array(
-                [
-                    radius * np.cos(theta) * np.cos(phi), 
-                    radius * np.sin(theta) * np.cos(phi), 
-                    radius * np.sin(phi)
-                ], dtype=np.float32
+        self.viewMatrixLocation = glGetUniformLocation(
+            self.shaderGPass, "view"
+        )
+        self.projectionMatrixLocation = glGetUniformLocation(
+            self.shaderGPass, "projection"
+        )
+
+        glUseProgram(self.rayTracerShader)
+
+        self.viewerPositionLocation = glGetUniformLocation(
+            self.rayTracerShader, "viewer.position"
+        )
+        self.viewerForwardsLocation = glGetUniformLocation(
+            self.rayTracerShader, "viewer.forwards"
+        )
+        self.viewerRightLocation = glGetUniformLocation(
+            self.rayTracerShader, "viewer.right"
+        )
+        self.viewerUpLocation = glGetUniformLocation(
+            self.rayTracerShader, "viewer.up"
+        )
+        self.sphereCountLocation = glGetUniformLocation(self.rayTracerShader, "sphereCount")
+        self.planeCountLocation = glGetUniformLocation(self.rayTracerShader, "planeCount")
+        self.lightCountLocation = glGetUniformLocation(self.rayTracerShader, "lightCount")
+     
+    def makeQuad(self):
+        # x, y, z, s, t
+        self.vertices = np.array(
+            ( 1.0,  1.0, 0.0, 1.0, 1.0, #top-right
+             -1.0,  1.0, 0.0, 0.0, 1.0, #top-left
+             -1.0, -1.0, 0.0, 0.0, 0.0, #bottom-left
+             -1.0, -1.0, 0.0, 0.0, 0.0, #bottom-left
+              1.0, -1.0, 0.0, 1.0, 0.0, #bottom-right
+              1.0,  1.0, 0.0, 1.0, 1.0), #top-right
+             dtype=np.float32
+        )
+
+        self.vertex_count = 6
+
+        self.vao = glGenVertexArrays(1)
+        glBindVertexArray(self.vao)
+        self.vbo = glGenBuffers(1)
+        glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
+        glBufferData(GL_ARRAY_BUFFER, self.vertices.nbytes, self.vertices, GL_STATIC_DRAW)
+
+        glEnableVertexAttribArray(0)
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 20, ctypes.c_void_p(0))
+        glEnableVertexAttribArray(1)
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 20, ctypes.c_void_p(12))
+    
+    def makeColorBuffers(self):
+
+        self.colorBuffers = []
+
+        #for geometry pass
+        self.gBuffer = glGenFramebuffers(1)
+        glBindFramebuffer(GL_FRAMEBUFFER, self.gBuffer)
+
+        self.g0Texture = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_2D, self.g0Texture)
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, self.screenWidth, self.screenHeight, 0, GL_RGBA, GL_FLOAT, None)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, 
+                            GL_TEXTURE_2D, self.g0Texture, 0)
+
+        self.g1Texture = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_2D, self.g1Texture)
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, self.screenWidth, self.screenHeight, 0, GL_RGBA, GL_FLOAT, None)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, 
+                            GL_TEXTURE_2D, self.g1Texture, 0)
+
+        self.g2Texture = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_2D, self.g2Texture)
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, self.screenWidth, self.screenHeight, 0, GL_RGBA, GL_FLOAT, None)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, 
+                            GL_TEXTURE_2D, self.g2Texture, 0)
+
+        self.g3Texture = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_2D, self.g3Texture)
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, self.screenWidth, self.screenHeight, 0, GL_RGBA, GL_FLOAT, None)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, 
+                            GL_TEXTURE_2D, self.g3Texture, 0)
+
+        glDrawBuffers(4, 
+            (
+                GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, 
+                GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3
             )
-            self.noise[4*i:4*i+3] = deviation[:]
+        )
 
-        self.noiseTexture = glGenTextures(1)
-        glActiveTexture(GL_TEXTURE2)
-        glBindTexture(GL_TEXTURE_2D, self.noiseTexture)
+        self.depthStencilBuffer = glGenRenderbuffers(1)
+        glBindRenderbuffer(GL_RENDERBUFFER, self.depthStencilBuffer)
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, self.screenWidth, self.screenHeight)
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, 
+                                GL_RENDERBUFFER, self.depthStencilBuffer)
+        glBindFramebuffer(GL_FRAMEBUFFER, 0)
+
+        #for raytracing shader
+        self.colorBuffer = glGenTextures(1)
+        glActiveTexture(GL_TEXTURE0)
+        glBindTexture(GL_TEXTURE_2D, self.colorBuffer)
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+
+    
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, self.screenWidth, self.screenHeight, 0, GL_RGBA, GL_FLOAT, None)
+    
+    def makeResourceMemory(self):
+
+        """
+            allocate memory for 1024 objects (YOLO)
+        """
+
+        objectData = []
+
+        # sphere: (cx cy cz r)  (r g b roughness) (- - - -)     (- - - -)             (- - - -)
+        # plane:  (cx cy cz tx) (ty tz bx by)     (bz nx ny nz) (umin umax vmin vmax) (material_index - - -)
+        # light:  (x y z s)     (r g b -)         (bz nx ny nz) (umin umax vmin vmax) (material_index - - -)
+        for object in range(1024):
+            for attribute in range(20):
+                objectData.append(0.0)
+        self.objectData = np.array(objectData, dtype=np.float32)
+
+        self.objectDataTexture = glGenTextures(1)
+        glActiveTexture(GL_TEXTURE1)
+        glBindTexture(GL_TEXTURE_2D, self.objectDataTexture)
 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
     
-        glTexImage2D(
-            GL_TEXTURE_2D,0,GL_RGBA32F, 
-            4 * self.width,self.height,
-            0,GL_RGBA,GL_FLOAT,bytes(self.noiseData)
+        glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA32F,5,1024,0,GL_RGBA,GL_FLOAT,bytes(self.objectData))
+    
+    def makeSuperTexture(self):
+
+        filenames = [
+            "AgedPolishedCopper", "AlternatingHandmadeTilesMonochrome", "BiomechZombieCircuits", 
+            "BakeliteMarbledPlastic", "MarsSmoothRock", "MetalCrateXCorrugatedPainted",
+            "OrangePineTreeBark", "SpaceLabWallOld", "SpaceStationWallKit5Metallic"
+        ]
+
+        self.SuperTexture = textures.SuperTexture(filenames)
+    
+    def makeShader(self, vertexFilepath, fragmentFilepath):
+        """
+            Read source code, compile and link shaders.
+            Returns the compiled and linked program.
+        """
+
+        with open(vertexFilepath,'r') as f:
+            vertex_src = f.readlines()
+
+        with open(fragmentFilepath,'r') as f:
+            fragment_src = f.readlines()
+        
+        shader = compileProgram(compileShader(vertex_src, GL_VERTEX_SHADER),
+                                compileShader(fragment_src, GL_FRAGMENT_SHADER))
+        
+        return shader
+    
+    def makeComputeShader(self, filepath):
+        """
+            Read source code, compile and link shaders.
+            Returns the compiled and linked program.
+        """
+
+        with open(filepath,'r') as f:
+            compute_src = f.readlines()
+        
+        shader = compileProgram(compileShader(compute_src, GL_COMPUTE_SHADER))
+        
+        return shader
+
+    def recordSphere(self, i, _sphere):
+
+        # sphere: (cx cy cz r) (r g b -) (- - - -) (- - - -) (- - - -)
+
+        self.objectData[20*i]     = _sphere.center[0]
+        self.objectData[20*i + 1] = _sphere.center[1]
+        self.objectData[20*i + 2] = _sphere.center[2]
+
+        self.objectData[20*i + 3] = _sphere.radius
+
+        self.objectData[20*i + 4] = _sphere.color[0]
+        self.objectData[20*i + 5] = _sphere.color[1]
+        self.objectData[20*i + 6] = _sphere.color[2]
+
+        self.objectData[20*i + 7] = _sphere.roughness
+    
+    def recordPlane(self, i, _plane):
+
+        # plane: (cx cy cz tx) (ty tz bx by) (bz nx ny nz) (umin umax vmin vmax) (r g b -)
+
+        self.objectData[20*i]     = _plane.center[0]
+        self.objectData[20*i + 1] = _plane.center[1]
+        self.objectData[20*i + 2] = _plane.center[2]
+
+        self.objectData[20*i + 3] = _plane.tangent[0]
+        self.objectData[20*i + 4] = _plane.tangent[1]
+        self.objectData[20*i + 5] = _plane.tangent[2]
+
+        self.objectData[20*i + 6] = _plane.bitangent[0]
+        self.objectData[20*i + 7] = _plane.bitangent[1]
+        self.objectData[20*i + 8] = _plane.bitangent[2]
+
+        self.objectData[20*i + 9]  = _plane.normal[0]
+        self.objectData[20*i + 10] = _plane.normal[1]
+        self.objectData[20*i + 11] = _plane.normal[2]
+
+        self.objectData[20*i + 12] = _plane.uMin
+        self.objectData[20*i + 13] = _plane.uMax
+        self.objectData[20*i + 14] = _plane.vMin
+        self.objectData[20*i + 15] = _plane.vMax
+
+        self.objectData[20*i + 16] = _plane.material_index
+    
+    def recordLight(self, i, _light):
+
+        # light: (x y z s) (r g b -) (- - - -) (- - - -) (- - - -)
+
+        self.objectData[20*i]     = _light.position[0]
+        self.objectData[20*i + 1] = _light.position[1]
+        self.objectData[20*i + 2] = _light.position[2]
+        self.objectData[20*i + 3] = _light.strength
+
+        self.objectData[20*i + 4] = _light.color[0]
+        self.objectData[20*i + 5] = _light.color[1]
+        self.objectData[20*i + 6] = _light.color[2]
+    
+    def updateScene(self, scene):
+
+        scene.outDated = False
+
+        glUseProgram(self.rayTracerShader)
+
+        #spheres
+        sphereCount = 0
+        objectCount = 0
+        for i,_sphere in enumerate(scene.spheres):
+            self.recordSphere(i + sphereCount + objectCount, _sphere)
+        sphereCount += len(scene.spheres)
+        for room in scene.active_rooms:
+            for i, _sphere in enumerate(room.spheres):
+                self.recordSphere(i + sphereCount + objectCount, _sphere)
+            sphereCount += len(room.spheres)
+        glUniform1f(self.sphereCountLocation, sphereCount)
+        objectCount += sphereCount
+
+        #planes
+        planeCount = 0
+        for i,_plane in enumerate(scene.planes):
+            self.recordPlane(i + planeCount + objectCount, _plane)
+        planeCount += len(scene.planes)
+        for room in scene.active_rooms:
+            for i, _plane in enumerate(room.planes):
+                self.recordPlane(i + planeCount + objectCount, _plane)
+            planeCount += len(room.planes)
+            for door in room.doors:
+                for i,_plane in enumerate(door.planes):
+                    self.recordPlane(i + planeCount + objectCount, _plane)
+                planeCount += len(door.planes)
+        glUniform1f(self.planeCountLocation, planeCount)
+        objectCount += planeCount
+
+        #lights
+        lightCount = 0
+        for i,_light in enumerate(scene.lights):
+            self.recordLight(i + lightCount + objectCount, _light)
+        lightCount += len(scene.lights)
+        for room in scene.active_rooms:
+            for i, _light in enumerate(room.lights):
+                self.recordLight(i + lightCount + objectCount, _light)
+            lightCount += len(room.lights)
+        glUniform1f(self.lightCountLocation, lightCount)
+        objectCount += lightCount
+
+        glActiveTexture(GL_TEXTURE1)
+        glBindTexture(GL_TEXTURE_2D, self.objectDataTexture)
+        glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA32F,5,1024,0,GL_RGBA,GL_FLOAT,bytes(self.objectData))
+    
+    def prepGeometryPass(self, scene):
+
+        view_transform = pyrr.matrix44.create_look_at(
+            eye = scene.camera.posArray,
+            target = scene.camera.posArray + scene.camera.forwards,
+            up = scene.camera.up,
+            dtype = np.float32
         )
 
-    def makeMegaTexture(self):
-        filenames = [
-            "AlienArchitecture", "AlternatingColumnsConcreteTile", "BiomechanicalPlumbing", 
-            "CarvedStoneFloorCheckered", "ChemicalStrippedConcrete", "ClayBrick",
-            "CrumblingBrickWall", "DiamondSquareFlourishTiles", "EgyptianHieroglyphMetal"
-        ] #change to real names
+        projection_transform = pyrr.matrix44.create_perspective_projection(
+            fovy = 45, aspect = 800/600, 
+            near = 0.1, far = 20, dtype=np.float32
+        )
 
-        self.texture = texture.texture(filenames)
+        glUseProgram(self.shaderGPass)
 
+        glUniformMatrix4fv(self.viewMatrixLocation, 1, False, view_transform)
 
-    def buildShader(self, vertex:str, fragment:str):
-        with open(vertex, 'r') as file:
-            vertexSource = file.readlines()
+        glUniformMatrix4fv(self.projectionMatrixLocation,1,GL_FALSE,projection_transform)
 
-        with open(fragment, 'r') as file:
-            fragmentSource = file.readlines()
+    def geometry_pass(self, scene):
 
-        return (compileProgram(compileShader(vertexSource, GL_VERTEX_SHADER), compileShader(fragmentSource, GL_FRAGMENT_SHADER)))
+        self.prepGeometryPass(scene)
 
-    def buildComputeShader(self, compute:str):
-        with open(compute, 'r') as file:
-            computeSource = file.readlines()
+        glUseProgram(self.shaderGPass)
+        glBindFramebuffer(GL_FRAMEBUFFER, self.gBuffer)
+        glClearColor(0.0, 0.0, 0.0, 1.0)
+        glDrawBuffers(4, (
+            GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, 
+            GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3
+        ))
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+        glEnable(GL_DEPTH_TEST)
+        glActiveTexture(GL_TEXTURE0)
+        glBindTexture(GL_TEXTURE_2D, self.SuperTexture.texture)
 
-        return (compileProgram(compileShader(computeSource, GL_COMPUTE_SHADER)))
+        glEnable(GL_CULL_FACE)
+        glCullFace(GL_BACK)
+
+        glBindVertexArray(scene.vao)
+        glDrawArrays(GL_TRIANGLES, 0, scene.vertexCount)
+        for _room in scene.active_rooms:
+            for _door in _room.doors:
+                glBindVertexArray(_door.vao)
+                glDrawArrays(GL_TRIANGLES, 0, _door.vertexCount)
+            glBindVertexArray(_room.vao)
+            glDrawArrays(GL_TRIANGLES, 0, _room.vertexCount)
+        glBindFramebuffer(GL_FRAMEBUFFER, 0)
     
-    def render(self):
-        # tune these for optimal performance. Different GPUs may prefer different group sizes.
-        workGroupWidth = self.width // 16
-        workGroupHeight = self.height // 16
+    def prepRayTracerPass(self, scene):
 
-        glUseProgram(self.rayTracer)
-        self.colBuffer.write()
+        glUseProgram(self.rayTracerShader)
 
-        glDispatchCompute(workGroupWidth, workGroupHeight, 1)
+        glUniform3fv(self.viewerPositionLocation, 1, scene.camera.posArray)
+        glUniform3fv(self.viewerForwardsLocation, 1, scene.camera.forwards)
+        glUniform3fv(self.viewerRightLocation, 1, scene.camera.right)
+        glUniform3fv(self.viewerUpLocation, 1, scene.camera.up)
+
+        glActiveTexture(GL_TEXTURE0)
+        glBindImageTexture(0, self.colorBuffer, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F)
+        glActiveTexture(GL_TEXTURE1)
+        glBindImageTexture(1, self.objectDataTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F)
+        glActiveTexture(GL_TEXTURE3)
+        glBindImageTexture(3, self.SuperTexture.texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F)
+        #g-Buffer
+        glActiveTexture(GL_TEXTURE4)
+        glBindImageTexture(4, self.g0Texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F)
+        glActiveTexture(GL_TEXTURE5)
+        glBindImageTexture(5, self.g1Texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F)
+        glActiveTexture(GL_TEXTURE6)
+        glBindImageTexture(6, self.g2Texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F)
+        glActiveTexture(GL_TEXTURE7)
+        glBindImageTexture(7, self.g3Texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F)
+
+    def RayTracerPass(self, scene):
+
+        self.prepRayTracerPass(scene)
+
+        glUseProgram(self.rayTracerShader)
+        glDispatchCompute(self.screenWidth, self.screenHeight, 1)
+  
+        # make sure writing to image has finished before read
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT)
+        glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F)
 
-        self.draw()
-
-    def draw(self):
+    def drawScreen(self):
+        glDisable(GL_CULL_FACE)
+        glDisable(GL_DEPTH_TEST)
         glUseProgram(self.shader)
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
-        self.colBuffer.read()
-        self.screen.draw()
+        glActiveTexture(GL_TEXTURE0)
+        glBindTexture(GL_TEXTURE_2D, self.colorBuffer)
+        #glBindTexture(GL_TEXTURE_2D, self.g2Texture)
+        glBindVertexArray(self.vao)
+        glDrawArrays(GL_TRIANGLES, 0, self.vertex_count)
         pg.display.flip()
 
+    def renderScene(self, scene):
+        """
+            Draw all objects in the scene
+        """
+        
+        self.updateScene(scene)
+        self.geometry_pass(scene)
+        self.RayTracerPass(scene)
+        self.drawScreen()
     
     def destroy(self):
-        glDeleteProgram(self.rayTracer)
-        self.colBuffer.destroy()
-        self.screen.destroy()
+        """
+            Free any allocated memory
+        """
+        glUseProgram(self.rayTracerShader)
+        glMemoryBarrier(GL_ALL_BARRIER_BITS)
+        glDeleteProgram(self.rayTracerShader)
+        glDeleteVertexArrays(1, (self.vao,))
+        glDeleteBuffers(1, (self.vbo,))
+        glDeleteTextures(1, (self.colorBuffer,))
         glDeleteProgram(self.shader)

@@ -1,6 +1,6 @@
 from common import *
-import main
+import app
 
 if __name__ == "__main__":
-    myApp = main.App()
+    myApp = app.App()
     myApp.quit()
