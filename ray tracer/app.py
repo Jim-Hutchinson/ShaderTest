@@ -7,12 +7,12 @@ class App:
         Calls high level control functions (handle input, draw scene etc)
     """
 
-    def __init__(self):
-
+    def __init__(self, width=640, height=None):
         pg.init()
-        self.Width = 800
-        self.Height = 3*self.Width//4
-        #force 4:3 aspect ratio
+        self.Width = width
+        # if no height provided, force 4:3 aspect ratio
+        self.Height = height if height is not None else 3 * self.Width // 4
+        
         pg.display.gl_set_attribute(pg.GL_CONTEXT_MAJOR_VERSION, 4)
         pg.display.gl_set_attribute(pg.GL_CONTEXT_MINOR_VERSION, 3)
         pg.display.gl_set_attribute(pg.GL_CONTEXT_PROFILE_MASK,
