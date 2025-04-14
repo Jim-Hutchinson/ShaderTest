@@ -6,12 +6,12 @@ class App:
     """
         Calls high level control functions (handle input, draw scene etc)
     """
-
+    
     def __init__(self, width=640, height=None):
         pg.init()
         self.Width = width
-        # if no height provided, force 4:3 aspect ratio
-        self.Height = height if height is not None else 3 * self.Width // 4
+        # if height is None or non-positive, force 4:3 aspect ratio
+        self.Height = height if (height is not None and height > 0) else 3 * self.Width // 4
         
         pg.display.gl_set_attribute(pg.GL_CONTEXT_MAJOR_VERSION, 4)
         pg.display.gl_set_attribute(pg.GL_CONTEXT_MINOR_VERSION, 3)
@@ -19,16 +19,16 @@ class App:
                                     pg.GL_CONTEXT_PROFILE_CORE)
         pg.display.set_mode((self.Width, self.Height), pg.OPENGL|pg.DOUBLEBUF)
         pg.mouse.set_visible(False)
-
+        
         self.graphicsEngine = engine.Engine(self.Width, self.Height)
         self.scene = scene.Scene()
-
+        
         self.lastTime = pg.time.get_ticks()
         self.currentTime = 0
         self.numFrames = 0
         self.frameTime = 0
         self.lightCount = 0
-
+        
         self.mainLoop()
     
     def mainLoop(self):
