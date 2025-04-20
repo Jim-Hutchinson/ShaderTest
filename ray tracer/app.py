@@ -7,7 +7,7 @@ class App:
         Calls high level control functions (handle input, draw scene etc)
     """
     
-    def __init__(self, width=640, height=None):
+    def __init__(self, width=640, height=None, use_fxaa=True):
         pg.init()
         self.Width = width
         # if height is None or non-positive, force 4:3 aspect ratio
@@ -20,7 +20,8 @@ class App:
         pg.display.set_mode((self.Width, self.Height), pg.OPENGL|pg.DOUBLEBUF)
         pg.mouse.set_visible(False)
         
-        self.graphicsEngine = engine.Engine(self.Width, self.Height)
+        # Pass FXAA setting to the graphics engine
+        self.graphicsEngine = engine.Engine(self.Width, self.Height, use_fxaa=use_fxaa)
         self.scene = scene.Scene()
         
         self.lastTime = pg.time.get_ticks()

@@ -6,7 +6,7 @@ class Engine:
         Responsible for drawing scenes
     """
 
-    def __init__(self, width, height):
+    def __init__(self, width, height, use_fxaa=True):
         """
             Initialize a flat raytracing context
             
@@ -20,16 +20,20 @@ class Engine:
         self.targetFrameRate = 60
         self.frameRateMargin = 10
 
-        #general OpenGL configuration
-        self.shader = self.makeShader("ray tracer/shaders/frameBufferVertex.txt",
-                                        "ray tracer/shaders/frameBufferFragment.txt")
-        
-        self.rayTracerShader = self.makeComputeShader("ray tracer/shaders/rayTracer.txt")
+        self.useFXAA = use_fxaa  # Set FXAA based on the parameter
 
-        self.shaderGPass = self.makeShader(
-            "ray tracer/shaders/g_vertex.txt",
-            "ray tracer/shaders/g_fragment.txt"
-        )
+        # General OpenGL configuration
+        self.shader = self.makeShader("ray tracer/shaders/frameBufferVertex.txt",
+                                      "ray tracer/shaders/frameBufferFragment.txt")
+        self.rayTracerShader = self.makeComputeShader("ray tracer/shaders/rayTracer.txt")
+        self.shaderGPass = self.makeShader("ray tracer/shaders/g_vertex.txt",
+                                           "ray tracer/shaders/g_fragment.txt")
+        self.fxaaShader = self.makeShader("ray tracer/shaders/frameBufferVertex.txt",
+                                          "ray tracer/shaders/fxaa_fragment.txt")
+
+        # Load the default shader
+        self.defaultShader = self.makeShader("ray tracer/shaders/frameBufferVertex.txt",
+                                             "ray tracer/shaders/frameBufferFragment.txt")
 
         self.set_onetime_shader_data()
 
@@ -440,14 +444,21 @@ class Engine:
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT)
         glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F)
 
+    def handleInput(self):
+        keys = pg.key.get_pressed()
+        if keys[pg.K_f]:  # Press 'F' to toggle FXAA
+            self.useFXAA = not self.useFXAA
+
     def drawScreen(self):
         glDisable(GL_CULL_FACE)
         glDisable(GL_DEPTH_TEST)
-        glUseProgram(self.shader)
+        if self.useFXAA:
+            glUseProgram(self.fxaaShader)  # Use FXAA shader
+        else:
+            glUseProgram(self.defaultShader)  # Use default shader
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(GL_TEXTURE_2D, self.colorBuffer)
-        #glBindTexture(GL_TEXTURE_2D, self.g2Texture)
         glBindVertexArray(self.vao)
         glDrawArrays(GL_TRIANGLES, 0, self.vertex_count)
         pg.display.flip()
