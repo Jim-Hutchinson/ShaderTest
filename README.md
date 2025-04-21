@@ -20,7 +20,7 @@
 
   Spheres are defined by their center and radius. Spheres also have material properties such as their color and roughness. The sphere's axis determines how they will rotate. The motion radius determines how far from the axis the sphere is, and the velocity determines how quickly the sphere orbits that axis.
 
-  Lights are also defined by their position in space. The radius is currently unused, but will in the future define the size of the emmissive sphere for calculating soft shadows. Set this to 0 for now. The axis value defines the direction the light can move in, and the velocity determines how quickly the light can travel along it.
+  Lights are also defined by their position in space. The radius determines the length of the path the light can move on. They move in a straight line, and I need to rename this. The axis value defines the direction the light can move in, and the velocity determines how quickly the light can travel along it.
 
   Doors connect rooms within a scene are are placed in the scene with the string "d" in the wall geometry matrix. The room and door system is not currently fully implemented and you can recreate this it with a hallway within a larger scene for now.
 

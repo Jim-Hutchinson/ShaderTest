@@ -1,7 +1,7 @@
 from common import *
 import app
 
-W = 1200
+W = 800
 H = -1
 USE_FXAA = True
 # Set to False to disable FXAA
