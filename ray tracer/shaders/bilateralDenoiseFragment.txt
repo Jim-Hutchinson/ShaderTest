@@ -10,24 +10,33 @@ float gaussian(float x, float sigma) {
     return exp(-(x * x) / (2.0 * sigma * sigma));
 }
 
+float luma(vec3 color) {
+    return dot(color, vec3(0.299, 0.587, 0.114));
+}
+
 void main() {
     vec2 texelSize = 1.0 / resolution;
     vec3 centerColor = texture(framebuffer, fragmentTextureCoordinate).rgb;
     
-    float sigmaS = 2.0;  // Spatial sigma
-    float sigmaR = 0.1;  // Range (color) sigma
+    // Adjusted sigma values
+    float sigmaS = 0.5;  // Smaller spatial sigma
+    float sigmaR = 0.05; // Slightly larger range sigma
 
-    vec3 sum = vec3(0.0);
-    float weightSum = 0.0;
+    vec3 sum = centerColor; // Initialize with center pixel
+    float weightSum = 1.0;  // Start with center weight
     
-    // 5x5 kernel neighborhood
+    // Use a 5x5 kernel to enhance denoising quality
     for (int i = -2; i <= 2; i++) {
         for (int j = -2; j <= 2; j++) {
+            // Skip the center pixel since it's already included
+            if(i == 0 && j == 0)
+                continue;
+                
             vec2 offset = vec2(float(i), float(j)) * texelSize;
             vec3 sampleColor = texture(framebuffer, fragmentTextureCoordinate + offset).rgb;
             
             float spatialWeight = gaussian(length(vec2(i, j)), sigmaS);
-            float rangeWeight = gaussian(length(sampleColor - centerColor), sigmaR);
+            float rangeWeight = gaussian(abs(luma(sampleColor) - luma(centerColor)), sigmaR);
             float weight = spatialWeight * rangeWeight;
             
             sum += sampleColor * weight;
