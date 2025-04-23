@@ -36,10 +36,10 @@
   * Doors have an incorrect texture
   * One textrure is not interacting with light sources correctly
   * Window becomes fullscreen when height is close to or exceeds the monitor height.
+  * Engine only supports 9 textures at the current resolution
 
 ### Future additions
 
-  * BVH acceleration structure building
   * Reflections via ray bounces
   * Aspect ratios beyond 4:3
   * Frame Rate Limit or Vsync option
@@ -49,14 +49,11 @@
 
 |System|Resolution|Frame Rate|
 |------|----------|----------|
-|Ryzen 7840U Laptop|640x480|140 fps|
-|Ryzen 7840U Laptop|800x600|84 fps|
-|Ryzen 7840U Laptop|1200x900|51 fps|
-|8700 + 3050 6GB|800x600|N fps|
+|Ryzen 7840U Laptop|800x600|N fps|
+|Ryzen 7840U Laptop|960x720|N fps|
+|8700 + 3050 6GB|960x720|N fps|
 |8700 + 3050 6GB|1200x900|N fps|
-|8700 + 3050 6GB|1600x1200|N fps|
-|14700K + 7900XTX|1200x900|N fps|
-|14700K + 7900XTX|1600x1200|N fps|
-|14700K + 7900XTX|1920x1440|N fps|
+|14700K + 7900XTX|1200x900|84 fps|
+|14700K + 7900XTX|1920x1440|34 fps|
 
-  Tests were performed in the default scene by moving the camera along the length of the hallway spinning 180 degrees, and then moving back and rotating again. This was repeated for 10 seconds and the frame rate averaged over that period. Frame rates will initially be lower when the scene first loads, but should quickly stabilize.
+  Tests were performed in the default scene by watching the yellow light sweep across all 9 textures. Frame rates averaged over a 10-second test. Frame rates will initially be lower as the level loads in the first few seconds.

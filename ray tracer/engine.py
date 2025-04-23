@@ -215,7 +215,7 @@ class Engine:
     def makeSuperTexture(self):
 
         filenames = [
-            "AgedPolishedCopper", "AlternatingHandmadeTilesMonochrome", "BiomechZombieCircuits", 
+            "CopperFlatRoundRoofPatina", "AlternatingHandmadeTilesMonochrome", "BiomechZombieCircuits", 
             "BakeliteMarbledPlastic", "MarsSmoothRock", "MetalCrateXCorrugatedPainted",
             "OrangePineTreeBark", "SpaceLabWallOld", "SpaceStationWallKit5Metallic"
         ]
