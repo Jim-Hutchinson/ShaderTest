@@ -204,15 +204,19 @@ class Scene:
         dPos = forwardsSpeed * self.camera.forwards + rightSpeed * self.camera.right
         dx, dy = (dPos[0], dPos[1])
 
+        # Calculate new row and column for vertical movement
         row = int(self.camera.posArray[1] + 10 * dy)
         col = int(self.camera.posArray[0])
-        if (self.wall_geometry[row][col] in empty_blocks):
-            self.camera.posArray[1] += dy
+        if 0 <= row < len(self.wall_geometry) and 0 <= col < len(self.wall_geometry[0]):
+            if self.wall_geometry[row][col] in empty_blocks:
+                self.camera.posArray[1] += dy
 
+        # Calculate new row and column for horizontal movement
         row = int(self.camera.posArray[1])
         col = int(self.camera.posArray[0] + 10 * dx)
-        if (self.wall_geometry[row][col] in empty_blocks):
-            self.camera.posArray[0] += dx
+        if 0 <= row < len(self.wall_geometry) and 0 <= col < len(self.wall_geometry[0]):
+            if self.wall_geometry[row][col] in empty_blocks:
+                self.camera.posArray[0] += dx
 
     def spin_player(self, dAngle):
         """
