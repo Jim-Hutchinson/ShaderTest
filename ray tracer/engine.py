@@ -438,7 +438,7 @@ class Engine:
         self.prepRayTracerPass(scene)
 
         glUseProgram(self.rayTracerShader)
-        glDispatchCompute(self.screenWidth, self.screenHeight, 1)
+        glDispatchCompute(int(self.screenWidth/16), int(self.screenHeight/16), 1)
   
         # make sure writing to image has finished before read
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT)
