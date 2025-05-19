@@ -52,12 +52,12 @@
 
 |System|Resolution|Frame Rate|
 |------|----------|----------|
-|Ryzen 7840U Laptop|600x450|31 fps|
-|Ryzen 7840U Laptop|800x600|17 fps|
-|Ryzen 7840U Laptop|960x720|12 fps|
-|8700 + 3050 6GB|960x720|57 fps|
-|8700 + 3050 6GB|1200x900|42 fps|
-|14700K + 7900XTX|1200x900|84 fps|
-|14700K + 7900XTX|1920x1440|34 fps|
+|Ryzen 7840U Laptop|600x450|228 fps|
+|Ryzen 7840U Laptop|800x600|165 fps|
+|Ryzen 7840U Laptop|960x720|116 fps|
+|8700T + 3050 6GB|960x720|551 fps|
+|8700T + 3050 6GB|1200x900|397 fps|
+|14700K + 7900XTX|1200x900|1082 fps|
+|14700K + 7900XTX|1920x1440|432 fps|
 
   Tests were performed in the default scene by watching the yellow light sweep across all 9 textures. Frame rates averaged over a 10-second test. Frame rates will initially be lower as the level loads in the first few seconds.
